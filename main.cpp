@@ -3,6 +3,7 @@
 // Utah Valley University - Todd Flyr
 
 #include <csignal>
+#include <cstdio>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
@@ -11,6 +12,73 @@
 #include <vector>
 
 namespace fs = std::filesystem;
+
+struct params {
+    double vt = 0.0;
+    double width = 0.0;
+    double pulse_delta = 0.0;
+    double drop_ratio = 0.0;
+    double below_drop_ratio = 0.0;
+};
+
+params parameters;
+
+void read_ini(fs::path ini_path){
+  //Bools to ensure data is all set
+  bool vt_set = false;
+  bool width_set = false;
+  bool pulse_delta_set = false;
+  bool drop_ratio_set = false;
+  bool below_drop_ratio_set = false;
+  //needed vars
+  std::fstream ini_stream(ini_path);
+  std::string line;
+  std::string par;
+
+  while (getline(ini_stream, line, '=')) {
+    if (!getline(ini_stream, par)) break;
+    line.erase(0, line.find_first_not_of(" \n\r\t"));
+    line.erase(line.find_last_not_of(" \n\r\t") + 1);
+    if (line == "vt") {
+      parameters.vt = std::stod(par);
+      vt_set = true;
+    }
+    else if (line == "width") {
+      parameters.width = std::stod(par);
+      width_set = true;
+    }
+    else if (line == "pulse_delta") {
+      parameters.pulse_delta = std::stod(par);
+      pulse_delta_set = true;
+    }
+    else if (line == "drop_ratio") {
+      parameters.drop_ratio = std::stod(par);
+      drop_ratio_set = true;
+    }
+    else if (line == "below_drop_ratio") {
+      parameters.below_drop_ratio = std::stod(par);
+      below_drop_ratio_set = true;
+    }
+    else {
+      if (line[0] == '#' || line.empty()){
+        continue;
+      } else {
+      throw std::runtime_error(line + " is not a valid option");
+      }
+    }
+  }
+  // Check that all vallues were set
+  if (!(vt_set && width_set && pulse_delta_set && drop_ratio_set && below_drop_ratio_set)){
+    throw std::runtime_error("All values must be set in .ini file");
+  }
+  //test print
+  std::cout << "vt: " << parameters.vt << std::endl
+  << "Width: "<< parameters.width << std::endl
+  << "pulse delta: " << parameters.pulse_delta << std::endl
+  << "drop ratio: " << parameters.drop_ratio << std::endl
+  << "below drop ratio: " << parameters.below_drop_ratio << std::endl;
+  }
+
 
 std::vector<double> smooth_data(fs::path file_path) {
   //ERROR checks
@@ -51,9 +119,9 @@ std::vector<double> smooth_data(fs::path file_path) {
   }
   // RVO should move to avoid an unnesicary copy
   //test prints:
-  for (size_t i = 0; i < rough_vector.size(); ++i) {
-    std::cout << rough_vector[i] << " \t " << smooth_vector[i] << std::endl;
-  }
+  // for (size_t i = 0; i < rough_vector.size(); ++i) {
+  //   std::cout << rough_vector[i] << " \t " << smooth_vector[i] << std::endl;
+  // }
 
   return smooth_vector;
 }
@@ -67,11 +135,21 @@ void printfile(fs::path file_path){
   }
 }
 
-int main() {
+int main(int argc, char* argv[]) {
+  if (argc != 2){
+    std::cerr << "Usage: " << argv[0] << " <path_to_ini_file>" << std::endl;
+    return 1;
+  }
+
+  fs::path ini_path = argv[1];
   fs::path dir_path = "./data_files";
+
+  read_ini(ini_path);
   if (fs::exists(dir_path) && fs::is_directory(dir_path)){
     for (auto &file : fs::directory_iterator(dir_path)){
-      smooth_data(file);
+      if (file.path().extension() == ".dat") {
+        smooth_data(file);
+      }
     }
   } else {
     std::cerr << "ERROR: directory not found at" << dir_path;
