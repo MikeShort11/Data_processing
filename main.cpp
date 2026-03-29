@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -19,6 +20,11 @@ struct params {
     double pulse_delta = 0.0;
     double drop_ratio = 0.0;
     double below_drop_ratio = 0.0;
+};
+
+struct pulse {
+  int start_index;
+  double area;
 };
 
 params parameters;
@@ -126,14 +132,34 @@ std::vector<double> smooth_data(fs::path file_path) {
   return smooth_vector;
 }
 
-//testing function, MAKE SURE TO REMOVE AFTER NO LONGER NEEDED
-void printfile(fs::path file_path){
-  std::fstream fst(file_path);
-  std::string line;
-  while (std::getline(fst, line)){
-        std::cout << line << std::endl;
+std::vector<pulse> find_pulse(const std::vector<double>& nums){
+  //TODO: add piggyback checking
+  std::vector<pulse> pulses;
+
+  auto left=nums.begin();
+  while (left < (nums.end() - 2)) {
+    //if there is a pulse
+    if (*(left+2) - *left > parameters.vt) {
+      auto scout = left;
+      while (scout + 1 < nums.end() && *(scout + 1) >= *scout) {
+        scout++;
+      }
+      pulses.push_back(pulse{
+         static_cast<int>(left -  nums.begin()),
+         std::accumulate(left, (left + parameters.width), 0.0)
+      });
+      left = scout +1;
+    } else left ++;
   }
+  //test print
+  for (auto i : pulses) {
+    std::cout << "pulse_start: " << i.start_index << std::endl;
+    std::cout << "pulse_area: " << i.area << std::endl;
+  }
+
+  return pulses;
 }
+
 
 int main(int argc, char* argv[]) {
   if (argc != 2){
@@ -142,13 +168,16 @@ int main(int argc, char* argv[]) {
   }
 
   fs::path ini_path = argv[1];
-  fs::path dir_path = "./data_files";
+  fs::path dir_path = "./";
+
+  std::vector<double> data;
 
   read_ini(ini_path);
   if (fs::exists(dir_path) && fs::is_directory(dir_path)){
     for (auto &file : fs::directory_iterator(dir_path)){
       if (file.path().extension() == ".dat") {
-        smooth_data(file);
+        data = smooth_data(file);
+        find_pulse(data);
       }
     }
   } else {
