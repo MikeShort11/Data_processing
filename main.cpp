@@ -3,6 +3,7 @@
 // Utah Valley University - Todd Flyr
 
 #include <csignal>
+#include <cstdarg>
 #include <cstdio>
 #include <filesystem>
 #include <iostream>
@@ -11,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 namespace fs = std::filesystem;
 
@@ -29,6 +31,12 @@ struct pulse {
   double area;
 };
 
+struct VoltageData {
+  std::vector<double> raw_data;
+  std::vector<double> smooth_data;
+};
+
+VoltageData voltage_data;
 params parameters;
 
 void read_ini(fs::path ini_path){
@@ -88,7 +96,7 @@ void read_ini(fs::path ini_path){
   }
 
 
-std::vector<double> smooth_data(fs::path file_path) {
+VoltageData read_data(fs::path file_path) {
   //ERROR checks
   if (!fs::exists(file_path) || !fs::is_regular_file(file_path)) {
     throw std::runtime_error("ERROR: file not found at:" + file_path.string());
@@ -131,7 +139,7 @@ std::vector<double> smooth_data(fs::path file_path) {
   //   std::cout << rough_vector[i] << " \t " << smooth_vector[i] << std::endl;
   // }
 
-  return smooth_vector;
+  return {rough_vector, smooth_vector};
 }
 
 std::vector<pulse> find_pulse(const std::vector<double>& nums){
@@ -150,54 +158,81 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
          static_cast<int>(left -  nums.begin()),
          static_cast<int>(scout - nums.begin()),
          *scout,
-         std::accumulate(left, (left + parameters.width), 0.0)
+         0.0
       });
       left = scout +1;
     } else left ++;
   }
   //test print
-  for (auto i : pulses) {
-    std::cout << "pulse_start: " << i.start_index << std::endl;
-    std::cout << "pulse_area: " << i.area << std::endl;
-  }
+  // for (auto i : pulses) {
+  //   std::cout << "pulse_start: " << i.start_index << std::endl;
+  //   std::cout << "pulse_area: " << i.area << std::endl;
+  // }
 
   return pulses;
 }
 
 
-void find_piggybacks(std::vector<pulse> pulses) {
+void find_piggybacks_and_area(std::vector<pulse>& pulses, const std::vector<double>& raw) {
   auto i = pulses.begin();
   while (i != pulses.end() && (i + 1) != pulses.end()) {
     auto next = i + 1;
+    //if the values are within the pulse delta
     if (next->start_index - i->start_index <= parameters.pulse_delta) {
       double check_height = parameters.drop_ratio * i->peak_height;
-      
-    }
-  }
+      auto search_start = raw.begin() + i->peak_index + 1;
+      auto search_end = raw.begin() + next->start_index;
 
+      long count = std::count_if(search_start, search_end, [check_height](double val) {return val < check_height; });
+      if (count > parameters.below_drop_ratio) {
+        std::cout << "Found piggyback at " << i->start_index << std::endl;
+        i = pulses.erase(i); // Remove and get the next valid iterator
+        continue; 
+      }
+      i++;
+    }
+    for (size_t idx = 0; idx < pulses.size(); ++idx) {
+        int limit = parameters.width;
+        if (idx + 1 < pulses.size()) {
+            limit = std::min(static_cast<int>(parameters.width), 
+                             pulses[idx+1].start_index - pulses[idx].start_index);
+        }
+        
+        auto start_it = raw.begin() + pulses[idx].start_index;
+        pulses[idx].area = std::accumulate(start_it, start_it + limit, 0.0);
+    }
+    i++;
+  }
+}
 
 int main(int argc, char* argv[]) {
   if (argc != 2){
     std::cerr << "Usage: " << argv[0] << " <path_to_ini_file>" << std::endl;
     return 1;
   }
-
+  
   fs::path ini_path = argv[1];
   fs::path dir_path = "./";
 
-  std::vector<double> data;
 
   read_ini(ini_path);
   if (fs::exists(dir_path) && fs::is_directory(dir_path)){
     for (auto &file : fs::directory_iterator(dir_path)){
       if (file.path().extension() == ".dat") {
-        data = smooth_data(file);
-        find_pulse(data);
+        std::cout << file.path().filename().string() << ":" << std::endl;
+        voltage_data = read_data(file);
+        std::vector<pulse> pulses = find_pulse(voltage_data.smooth_data);
+        find_piggybacks_and_area(pulses, voltage_data.raw_data);
+        if (!pulses.empty()) {
+          for (const auto& p : pulses) {
+              std::cout << p.start_index << " (" << static_cast<long>(p.area) << ")" << std::endl;
+          }
+        }
       }
     }
   } else {
     std::cerr << "ERROR: directory not found at" << dir_path;
   }
   
-  return 1;
+  return 0;
 }
