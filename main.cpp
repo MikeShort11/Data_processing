@@ -24,6 +24,8 @@ struct params {
 
 struct pulse {
   int start_index;
+  int peak_index;
+  double peak_height;
   double area;
 };
 
@@ -146,6 +148,8 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
       }
       pulses.push_back(pulse{
          static_cast<int>(left -  nums.begin()),
+         static_cast<int>(scout - nums.begin()),
+         *scout,
          std::accumulate(left, (left + parameters.width), 0.0)
       });
       left = scout +1;
@@ -159,6 +163,17 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
 
   return pulses;
 }
+
+
+void find_piggybacks(std::vector<pulse> pulses) {
+  auto i = pulses.begin();
+  while (i != pulses.end() && (i + 1) != pulses.end()) {
+    auto next = i + 1;
+    if (next->start_index - i->start_index <= parameters.pulse_delta) {
+      double check_height = parameters.drop_ratio * i->peak_height;
+      
+    }
+  }
 
 
 int main(int argc, char* argv[]) {
