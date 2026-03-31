@@ -88,11 +88,11 @@ void read_ini(fs::path ini_path){
     throw std::runtime_error("All values must be set in .ini file");
   }
   //test print
-  std::cout << "vt: " << parameters.vt << std::endl
-  << "Width: "<< parameters.width << std::endl
-  << "pulse delta: " << parameters.pulse_delta << std::endl
-  << "drop ratio: " << parameters.drop_ratio << std::endl
-  << "below drop ratio: " << parameters.below_drop_ratio << std::endl;
+  // std::cout << "vt: " << parameters.vt << std::endl
+  // << "Width: "<< parameters.width << std::endl
+  // << "pulse delta: " << parameters.pulse_delta << std::endl
+  // << "drop ratio: " << parameters.drop_ratio << std::endl
+  // << "below drop ratio: " << parameters.below_drop_ratio << std::endl;
   }
 
 
@@ -150,7 +150,7 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
   while (left < (nums.end() - 2)) {
     //if there is a pulse
     if (*(left+2) - *left > parameters.vt) {
-      auto scout = left;
+      auto scout = left + 2;
       while (scout + 1 < nums.end() && *(scout + 1) >= *scout) {
         scout++;
       }
@@ -188,22 +188,21 @@ void find_piggybacks_and_area(std::vector<pulse>& pulses, const std::vector<doub
         std::cout << "Found piggyback at " << i->start_index << std::endl;
         i = pulses.erase(i); // Remove and get the next valid iterator
         continue; 
+      } else i++;
+    }
+  }
+  for (size_t idx = 0; idx < pulses.size(); ++idx) {
+      int limit = parameters.width;
+      if (idx + 1 < pulses.size()) {
+          limit = std::min(static_cast<int>(parameters.width), 
+                           pulses[idx+1].start_index - pulses[idx].start_index);
       }
-      i++;
-    }
-    for (size_t idx = 0; idx < pulses.size(); ++idx) {
-        int limit = parameters.width;
-        if (idx + 1 < pulses.size()) {
-            limit = std::min(static_cast<int>(parameters.width), 
-                             pulses[idx+1].start_index - pulses[idx].start_index);
-        }
-        
-        auto start_it = raw.begin() + pulses[idx].start_index;
-        pulses[idx].area = std::accumulate(start_it, start_it + limit, 0.0);
-    }
-    i++;
+      
+      auto start_it = raw.begin() + pulses[idx].start_index;
+      pulses[idx].area = std::accumulate(start_it, start_it + limit, 0.0);
   }
 }
+
 
 int main(int argc, char* argv[]) {
   if (argc != 2){
