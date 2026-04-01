@@ -25,8 +25,8 @@ struct params {
 };
 
 struct pulse {
-  int start_index;
-  int peak_index;
+  size_t start_index;
+  size_t peak_index;
   double peak_height;
   double area;
 };
@@ -116,11 +116,11 @@ VoltageData read_data(fs::path file_path) {
   }
   std::vector<double> smooth_vector(rough_vector.size());
   //Add first four from rough
-  for (int i=0; i < 3; i++) {
+  for (size_t i=0; i < 3; i++) {
     smooth_vector[i] = (rough_vector[i]);
   }
   //apply weighted average to middle
-  for (int i=3; i < rough_vector.size() -3; i++) {
+  for (size_t i=3; i < rough_vector.size() -3; i++) {
     smooth_vector[i] = ((rough_vector[i - 3] +
     2*rough_vector[i - 2] +
     3*rough_vector[i - 1] +
@@ -130,7 +130,7 @@ VoltageData read_data(fs::path file_path) {
     rough_vector[i + 3]) / 15);
   }
   //Add last three to smoothed vector
-  for (int i=rough_vector.size() - 3; i < rough_vector.size(); i++) {
+  for (size_t i=rough_vector.size() - 3; i < rough_vector.size(); i++) {
     smooth_vector[i] = (rough_vector[i]);
   }
   // RVO should move to avoid an unnesicary copy
@@ -155,8 +155,8 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
         scout++;
       }
       pulses.push_back(pulse{
-         static_cast<int>(left -  nums.begin()),
-         static_cast<int>(scout - nums.begin()),
+         static_cast<size_t>(left -  nums.begin()),
+         static_cast<size_t>(scout - nums.begin()),
          *scout,
          0.0
       });
@@ -172,34 +172,36 @@ std::vector<pulse> find_pulse(const std::vector<double>& nums){
   return pulses;
 }
 
-
 void find_piggybacks_and_area(std::vector<pulse>& pulses, const std::vector<double>& raw) {
-  auto i = pulses.begin();
-  while (i != pulses.end() && (i + 1) != pulses.end()) {
-    auto next = i + 1;
-    //if the values are within the pulse delta
-    if (next->start_index - i->start_index <= parameters.pulse_delta) {
-      double check_height = parameters.drop_ratio * i->peak_height;
-      auto search_start = raw.begin() + i->peak_index + 1;
-      auto search_end = raw.begin() + next->start_index;
+  auto it = std::adjacent_find(pulses.begin(), pulses.end(), [](const pulse& a, const pulse& b) {
+    return (b.start_index - a.start_index) <= parameters.pulse_delta; });
 
-      long count = std::count_if(search_start, search_end, [check_height](double val) {return val < check_height; });
-      if (count > parameters.below_drop_ratio) {
-        std::cout << "Found piggyback at " << i->start_index << std::endl;
-        i = pulses.erase(i); // Remove and get the next valid iterator
-        continue; 
-      } else i++;
+  while (it != pulses.end()){
+    if (it != pulses.end()) {
+        double check_height = parameters.drop_ratio * it->peak_height;
+        auto search_start = raw.begin() + it->peak_index + 1;
+        auto search_end = raw.begin() + (it+1)->start_index;
+
+        long count = std::count_if(search_start, search_end, [check_height](double val) {return val < check_height; });
+        if (count > parameters.below_drop_ratio) {
+          std::cout << "Found piggyback at " << it->start_index << std::endl;
+          it = pulses.erase(it); // Remove and get the next valid iterator
+          it = std::adjacent_find(pulses.begin(), pulses.end(), [](const pulse& a, const pulse& b) {
+              return (b.start_index - a.start_index) <= parameters.pulse_delta; });
+        } else {
+          it = std::adjacent_find(it+1, pulses.end(), [](const pulse& a, const pulse& b) {
+              return (b.start_index - a.start_index) <= parameters.pulse_delta; });
+      }
     }
-  }
-  for (size_t idx = 0; idx < pulses.size(); ++idx) {
-      int limit = parameters.width;
+    for (size_t idx = 0; idx < pulses.size(); ++idx) {
+      size_t limit = parameters.width;
       if (idx + 1 < pulses.size()) {
-          limit = std::min(static_cast<int>(parameters.width), 
-                           pulses[idx+1].start_index - pulses[idx].start_index);
+          limit = std::min(static_cast<size_t>(parameters.width), pulses[idx+1].start_index - pulses[idx].start_index);
       }
       
       auto start_it = raw.begin() + pulses[idx].start_index;
       pulses[idx].area = std::accumulate(start_it, start_it + limit, 0.0);
+    }
   }
 }
 
